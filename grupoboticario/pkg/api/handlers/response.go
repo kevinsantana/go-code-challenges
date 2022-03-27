@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
@@ -97,9 +98,40 @@ func GetResponseError(err error) (int, ResponseError, bool) {
 }
 
 func parseFiberError(httpErrs fiber.MultiError) (int, ResponseError) {
+	for _, value := range httpErrs {
+		if emField, ok := value.(fiber.EmptyFieldError); ok {
+			return fiber.StatusUnprocessableEntity, ResponseError{
+				Code:    fmt.Sprintf("API|REQUEST|%s_IS_REQUIRED", strings.ToUpper(emField.Key)),
+				Message: fmt.Sprintf("The param {%s} is required", emField.Key),
+			}
+		}
+
+		if cnField, ok := value.(fiber.ConversionError); ok {
+			return fiber.StatusUnprocessableEntity, ResponseError{
+				Code:    fmt.Sprintf("API|REQUEST|%s_IS_INVALID", strings.ToUpper(cnField.Key)),
+				Message: fmt.Sprintf("The param {%s} must be {%s}", cnField.Key, cnField.Type.String()),
+			}
+		}
+	}
+
+	return fiber.StatusBadRequest, ResponseError{
+		Code:    "API|REQUEST|INVALID_REQUEST",
+		Message: "An unexpected error has occurred with your request params",
+	}
 
 }
 
 func parseValidatorError(validationErrors validator.ValidationErrors) (int, ResponseError) {
+	for _, value := range validationErrors {
+		return fiber.StatusUnprocessableEntity, ResponseError{
+			Code:    fmt.Sprintf("API|REQUEST|%s_MUST_BE_%s", strings.ToUpper(value.Field()), strings.ToUpper(value.Tag())),
+			Message: fmt.Sprintf("The param {%s} must be {%s}", strings.ToLower(value.Field()), value.Tag()),
+		}
+	}
+
+	return fiber.StatusBadGateway, ResponseError{
+		Code:    "API|REQUEST|INVALID_REQUEST",
+		Message: "An unexpected error has occurred with your request params",
+	}
 
 }
